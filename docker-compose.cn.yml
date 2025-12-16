@@ -1,12 +1,18 @@
-# docker-compose.yml - 使用官方镜像源
-# 适用于：网络可正常访问 Docker Hub 的环境（建议配置 Docker 镜像加速器）
-# 使用方法: docker-compose up -d --build
+# docker-compose.cn.yml - 使用国内镜像源
+# 适用于：中国大陆或无法访问 Docker Hub 的环境
+# 使用方法: docker-compose -f docker-compose.cn.yml up -d --build
 # 
-# 如需使用国内镜像源，请使用: docker-compose -f docker-compose.cn.yml up -d --build
+# 镜像源说明：
+# - MySQL: 阿里云镜像仓库
+# - Redis: 阿里云镜像仓库  
+# - Python 基础镜像: 阿里云镜像仓库（通过 Dockerfile.cn）
+# - PyPI 包: 清华大学镜像源（通过 Dockerfile.cn）
+# 
+# 详细说明请参考: DOCKER_BUILD.md
 
 services:
   mysql:
-    image: mysql:8.0
+    image: registry.cn-hangzhou.aliyuncs.com/library/mysql:8.0
     container_name: chat_mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-password}
@@ -23,7 +29,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:6.0-alpine
+    image: registry.cn-hangzhou.aliyuncs.com/library/redis:6.0-alpine
     container_name: chat_redis
     ports:
       - "6379:6379"
@@ -37,7 +43,9 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.cn
     container_name: chat_app
     ports:
       - "9000:9000"
@@ -65,3 +73,4 @@ services:
 volumes:
   mysql_data:
   redis_data:
+

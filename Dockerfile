@@ -1,4 +1,8 @@
-FROM python:3.8-slim-buster
+# Dockerfile - 使用官方镜像源
+# 适用于：网络可正常访问 Docker Hub 的环境
+# 使用方法: docker-compose up -d --build
+
+FROM python:3.8-slim
 
 WORKDIR /app
 
