@@ -55,7 +55,13 @@
 │   │   └── views/        # 页面视图
 │   ├── electron/         # Electron 主进程
 │   └── package.json
-├── docker-compose.yml     # Docker Compose 配置
+├── docs/                  # 项目文档
+│   ├── README.md         # 文档索引
+│   └── PROJECT_STRUCTURE.md  # 项目结构说明
+├── docker-compose.yml     # Docker Compose 配置（仅后端）
+├── docker-compose.full.yml # Docker Compose 配置（完整服务）
+├── 启动.bat / 启动.sh    # 一键启动脚本
+├── 停止.bat / 停止.sh    # 停止服务脚本
 ├── Dockerfile            # Docker 镜像配置
 ├── requirements.txt      # Python 依赖
 └── .env.example          # 环境变量示例
@@ -69,6 +75,30 @@
 - Redis >= 6.0
 
 ## 快速开始
+
+### 🚀 Docker 一键启动（推荐，无需安装 Node.js 和 Python）
+
+**Windows:**
+```cmd
+启动.bat
+```
+
+**Linux/macOS:**
+```bash
+chmod +x 启动.sh
+./启动.sh
+```
+
+**手动启动:**
+```bash
+docker-compose -f docker-compose.full.yml up -d --build
+```
+
+> **详细 Docker 启动指南请查看 [README_DOCKER.md](README_DOCKER.md)**
+
+### 📝 本地开发启动
+
+> **本地开发需要安装 Node.js 和 Python，详细步骤见下方说明**
 
 ### 1. 克隆项目
 
@@ -183,6 +213,8 @@ docker-compose up -d
 ```
 
 这将启动 MySQL、Redis 和应用服务。
+
+更多 Docker 相关文档请查看 [README_DOCKER.md](README_DOCKER.md)
 
 ## API 文档
 

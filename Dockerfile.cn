@@ -1,12 +1,12 @@
 # Dockerfile.cn - 使用国内镜像源
 # 适用于：中国大陆或无法访问 Docker Hub 的环境
 # 使用方法: docker-compose -f docker-compose.cn.yml up -d --build
-# 
+#
 # 镜像源说明：
-# - Python 基础镜像：阿里云镜像仓库
+# - Python 基础镜像：使用 Docker Hub（通过镜像加速器）或网易镜像
 # - PyPI 包安装：清华大学镜像源
 
-FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.8-slim
+FROM python:3.8
 
 WORKDIR /app
 

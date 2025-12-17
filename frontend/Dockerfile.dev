@@ -1,0 +1,26 @@
+# Dockerfile.dev - 用于前端开发环境
+# 使用此 Dockerfile 可以在 Docker 容器中安装依赖和运行开发服务器
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+# 配置 npm 镜像源（使用淘宝镜像加速，适用于国内环境）
+# 如果网络环境良好，可以注释掉这行使用官方源
+RUN npm config set registry https://registry.npmmirror.com
+
+# 复制 package.json 和 package-lock.json（如果存在）
+COPY package*.json ./
+
+# 安装依赖（使用 --legacy-peer-deps 兼容性更好）
+RUN npm install --legacy-peer-deps
+
+# 复制所有源代码
+COPY . .
+
+# 暴露 Vite 开发服务器端口
+EXPOSE 5173
+
+# 启动开发服务器（允许外部访问）
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+

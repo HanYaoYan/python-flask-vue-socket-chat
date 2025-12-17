@@ -1,5 +1,5 @@
 import redis
-from config import SETTINGS
+import os
 
 
 class RedisClient:
@@ -13,13 +13,17 @@ class RedisClient:
     
     def __init__(self):
         if self._redis_client is None:
-            redis_config = SETTINGS['redis']
+            # 从环境变量获取 Redis 配置，支持 IP 地址
+            redis_host = os.environ.get('REDIS_HOST_IP') or os.environ.get('REDIS_HOST', 'localhost')
+            redis_port = int(os.environ.get('REDIS_PORT', 6379))
+            redis_db = int(os.environ.get('REDIS_DB', 0))
+            redis_password = os.environ.get('REDIS_PASSWORD', None)
             self._redis_client = redis.Redis(
-                host=redis_config['host'],
-                port=redis_config['port'],
-                db=redis_config['db'],
-                password=redis_config.get('password'),
-                decode_responses=redis_config.get('decode_responses', True)
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                password=redis_password,
+                decode_responses=True
             )
     
     @property

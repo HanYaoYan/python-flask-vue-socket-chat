@@ -1,20 +1,13 @@
-# docker-compose.cn.yml - 使用国内镜像源优化
-# 适用于：中国大陆环境（需要先配置 Docker 镜像加速器）
-# 使用方法: docker-compose -f docker-compose.cn.yml up -d --build
-#
-# 重要提示：
-# 1. 使用此配置前，请先配置 Docker 镜像加速器（参考 DOCKER_TROUBLESHOOTING.md）
-# 2. 镜像通过镜像加速器从 Docker Hub 拉取（mysql:8.0, redis:6.0-alpine, python:3.8-slim）
-# 3. Python 包通过清华大学 PyPI 镜像源安装（Dockerfile.cn 中配置）
-#
-# 详细说明请参考: DOCKER_BUILD.md
+# docker-compose.dev.yml - 开发环境配置
+# 使用方法: docker-compose -f docker-compose.dev.yml up frontend
+
+version: '3.8'
 
 services:
+  # 后端服务（复用原有的 docker-compose.yml 配置）
   mysql:
-    # 使用 Docker Hub 镜像（通过镜像加速器加速）
-    # 如果加速器不可用，可以尝试：docker.mirrors.ustc.edu.cn/library/mysql:8.0
     image: mysql:8.0
-    container_name: chat_mysql
+    container_name: chat_mysql_dev
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-password}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-chat_db}
@@ -30,10 +23,8 @@ services:
       retries: 5
 
   redis:
-    # 使用 Docker Hub 镜像（通过镜像加速器加速）
-    # 如果加速器不可用，可以尝试：docker.mirrors.ustc.edu.cn/library/redis:6.0-alpine
     image: redis:6.0-alpine
-    container_name: chat_redis
+    container_name: chat_redis_dev
     ports:
       - "6379:6379"
     volumes:
@@ -46,12 +37,14 @@ services:
       retries: 5
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile.cn
-    container_name: chat_app
+    build: .
+    container_name: chat_app_dev
     ports:
       - "9000:9000"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 127.0.0.11
     environment:
       HOST: 0.0.0.0
       PORT: 9000
@@ -71,7 +64,24 @@ services:
         condition: service_healthy
     volumes:
       - ./:/app
-    command: python3 app.py
+    command: sh -c "python3 wait-for-mysql.py mysql 3306 && python3 app.py"
+
+  # 前端开发服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: chat_frontend_dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # 防止覆盖容器内的 node_modules
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+    stdin_open: true
+    tty: true
 
 volumes:
   mysql_data:

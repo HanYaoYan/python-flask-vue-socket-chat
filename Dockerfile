@@ -2,7 +2,7 @@
 # 适用于：网络可正常访问 Docker Hub 的环境
 # 使用方法: docker-compose up -d --build
 
-FROM python:3.8-slim
+FROM python:3.8
 
 WORKDIR /app
 
