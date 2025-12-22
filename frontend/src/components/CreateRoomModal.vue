@@ -7,6 +7,16 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
+          <label>房间ID</label>
+          <div class="room-code-display">
+            <span class="room-code-value">{{ form.roomCode }}</span>
+            <button @click="generateRoomCode" class="btn-refresh" type="button" title="重新生成">
+              🔄
+            </button>
+          </div>
+          <p class="form-hint">房间ID将用于其他用户加入此房间</p>
+        </div>
+        <div class="form-group">
           <label>房间名称</label>
           <input
             v-model="form.name"
@@ -36,12 +46,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useChatStore } from '@/store/chat'
 
 const chatStore = useChatStore()
 
 const form = ref({
+  roomCode: '',
   name: '',
   description: ''
 })
@@ -49,6 +60,16 @@ const loading = ref(false)
 const error = ref('')
 
 const emit = defineEmits(['close', 'created'])
+
+// 生成6位随机数字房间ID
+function generateRoomCode() {
+  form.value.roomCode = String(Math.floor(100000 + Math.random() * 900000))
+}
+
+// 组件挂载时生成房间ID
+onMounted(() => {
+  generateRoomCode()
+})
 
 async function handleCreate() {
   if (!form.value.name.trim()) {
@@ -60,10 +81,12 @@ async function handleCreate() {
   error.value = ''
   
   try {
-    const room = await chatStore.createNewRoom(form.value.name, form.value.description)
+    const room = await chatStore.createNewRoom(form.value.name, form.value.description, form.value.roomCode)
     emit('created', room)
   } catch (err) {
-    error.value = err.error || '创建房间失败'
+    error.value = err.response?.data?.error || err.error || '创建房间失败'
+    // 如果创建失败，重新生成房间ID
+    generateRoomCode()
   } finally {
     loading.value = false
   }
@@ -186,6 +209,77 @@ input:focus, textarea:focus {
   color: #c33;
   border-radius: 4px;
   text-align: center;
+}
+
+.room-code-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  border: 2px solid #667eea;
+}
+
+.room-code-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #667eea;
+  font-family: 'Courier New', monospace;
+  flex: 1;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.btn-refresh {
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.2s;
+}
+
+.btn-refresh:hover {
+  background: #5568d3;
+}
+
+.form-hint {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #999;
+}
+
+.success-message {
+  margin: 0 20px 20px;
+  padding: 15px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.success-message p {
+  margin: 8px 0;
+}
+
+.room-id {
+  font-size: 24px;
+  font-weight: bold;
+  color: #667eea;
+  display: inline-block;
+  padding: 4px 12px;
+  background: white;
+  border-radius: 4px;
+  margin: 0 5px;
+}
+
+.hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 10px;
 }
 </style>
 

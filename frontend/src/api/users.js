@@ -10,3 +10,23 @@ export function searchUsers(keyword) {
   })
 }
 
+export function getFriends() {
+  return request.get('/users/friends')
+}
+
+export function getFriendRequests() {
+  return request.get('/users/friends/requests')
+}
+
+export function addFriend(friendId) {
+  return request.post(`/users/friends/${friendId}`)
+}
+
+export function acceptFriendRequest(friendId) {
+  return request.post(`/users/friends/${friendId}/accept`)
+}
+
+export function deleteFriend(friendId) {
+  return request.delete(`/users/friends/${friendId}`)
+}
+

@@ -7,7 +7,7 @@ Flask-JWT-Extended==4.5.3
 Werkzeug==2.3.7
 
 # 数据库
-SQLAlchemy==2.0.23
+SQLAlchemy>=2.0.29
 PyMySQL==1.1.0
 cryptography==41.0.7
 
@@ -16,13 +16,15 @@ redis==5.0.1
 
 # 异步支持
 eventlet==0.33.3
-greenlet==3.0.1
+# greenlet: 如果网络无法访问 GitHub，可以使用 PyPI 版本: greenlet>=3.0.1
+# 如果需要最新版本，可以手动安装: pip install git+https://github.com/python-greenlet/greenlet.git@master
+greenlet>=3.0.1
 python-socketio==5.10.0
 python-engineio==4.9.0
 
 # 工具
 PyJWT==2.8.0
-bcrypt==4.1.1
+bcrypt>=4.3.0
 python-dotenv==1.0.0
 
 # 其他

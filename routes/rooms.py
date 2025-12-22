@@ -5,6 +5,7 @@ from models.room import Room, RoomMember
 from models.message import Message
 from utils.redis_client import redis_client
 import json
+import random
 
 rooms_bp = Blueprint('rooms', __name__, url_prefix='/api/rooms')
 
@@ -24,15 +25,15 @@ def get_rooms():
         user = get_current_user(request)
         if not user:
             return jsonify({'error': '未认证'}), 401
-        
+
         # 获取用户所在的房间
         room_members = RoomMember.query.filter_by(user_id=user.id).all()
         rooms = [member.room for member in room_members]
-        
+
         return jsonify({
             'rooms': [room.to_dict() for room in rooms]
         }), 200
-        
+
     except Exception as e:
         return jsonify({'error': f'获取房间列表失败: {str(e)}'}), 500
 
@@ -44,17 +45,27 @@ def create_room():
         user = get_current_user(request)
         if not user:
             return jsonify({'error': '未认证'}), 401
-        
+
         data = request.get_json()
         name = data.get('name', '').strip()
         description = data.get('description', '').strip()
         room_type = data.get('room_type', 'group')
-        
+        room_code = data.get('room_code', '').strip()  # 从前端获取随机生成的房间ID
+
         if not name:
             return jsonify({'error': '房间名称不能为空'}), 400
-        
+
+        # 如果没有提供room_code，生成一个6位随机数字
+        if not room_code:
+            room_code = str(random.randint(100000, 999999))
+
+        # 检查room_code是否已存在
+        while Room.query.filter_by(room_code=room_code).first():
+            room_code = str(random.randint(100000, 999999))
+
         # 创建房间
         room = Room(
+            room_code=room_code,
             name=name,
             description=description,
             room_type=room_type,
@@ -62,46 +73,61 @@ def create_room():
         )
         db.session.add(room)
         db.session.flush()  # 获取 room.id
-        
+
         # 添加创建者为管理员
         member = RoomMember(room_id=room.id, user_id=user.id, role='admin')
         db.session.add(member)
         db.session.commit()
-        
+
         return jsonify({
             'message': '房间创建成功',
             'room': room.to_dict()
         }), 201
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': f'创建房间失败: {str(e)}'}), 500
 
 
-@rooms_bp.route('/<int:room_id>/join', methods=['POST'])
-def join_room(room_id):
-    """加入房间"""
+@rooms_bp.route('/join', methods=['POST'])
+def join_room():
+    """加入房间（通过房间ID或房间代码）"""
     try:
         user = get_current_user(request)
         if not user:
             return jsonify({'error': '未认证'}), 401
-        
-        room = Room.query.get_or_404(room_id)
-        
+
+        data = request.get_json() or {}
+        room_id = data.get('room_id')
+        room_code = data.get('room_code', '').strip()
+
+        # 通过room_code或room_id查找房间
+        if room_code:
+            room = Room.query.filter_by(room_code=room_code).first()
+            if not room:
+                return jsonify({'error': '房间不存在'}), 404
+            room_id = room.id
+        elif room_id:
+            room = Room.query.get(room_id)
+            if not room:
+                return jsonify({'error': '房间不存在'}), 404
+        else:
+            return jsonify({'error': '请提供房间ID或房间代码'}), 400
+
         # 检查是否已经是成员
         if RoomMember.query.filter_by(room_id=room_id, user_id=user.id).first():
             return jsonify({'error': '已经是房间成员'}), 400
-        
+
         # 添加成员
         member = RoomMember(room_id=room_id, user_id=user.id)
         db.session.add(member)
         db.session.commit()
-        
+
         return jsonify({
             'message': '加入房间成功',
             'room': room.to_dict()
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': f'加入房间失败: {str(e)}'}), 500
@@ -114,17 +140,17 @@ def get_messages(room_id):
         user = get_current_user(request)
         if not user:
             return jsonify({'error': '未认证'}), 401
-        
+
         # 检查用户是否是房间成员
         if not RoomMember.query.filter_by(room_id=room_id, user_id=user.id).first():
             return jsonify({'error': '不是房间成员'}), 403
-        
+
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
-        
+
         # 先从 Redis 缓存获取最新消息
         cached_messages = redis_client.get_cached_messages(room_id, per_page)
-        
+
         if cached_messages and page == 1:
             # 第一页优先使用缓存
             messages = [json.loads(msg) for msg in cached_messages]
@@ -133,16 +159,16 @@ def get_messages(room_id):
             pagination = Message.query.filter_by(room_id=room_id)\
                 .order_by(Message.created_at.desc())\
                 .paginate(page=page, per_page=per_page, error_out=False)
-            
+
             messages = [msg.to_dict() for msg in pagination.items]
             messages.reverse()  # 按时间正序
-        
+
         return jsonify({
             'messages': messages,
             'page': page,
             'per_page': per_page
         }), 200
-        
+
     except Exception as e:
         return jsonify({'error': f'获取消息失败: {str(e)}'}), 500
 

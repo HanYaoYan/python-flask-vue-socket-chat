@@ -38,7 +38,7 @@ os.environ['REDIS_HOST_IP'] = _redis_host_ip
 # 现在进行 monkey_patch
 eventlet.monkey_patch()
 
-from flask import Flask
+from flask import Flask, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
 from models import db
@@ -64,7 +64,16 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # 初始化扩展
 db.init_app(app)
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
-sio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# Socket.IO 配置：允许所有来源，启用日志
+sio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='eventlet',
+    logger=True,
+    engineio_logger=True,
+    ping_timeout=60,
+    ping_interval=25
+)
 
 # 注册蓝图
 from routes.auth import auth_bp
@@ -78,38 +87,80 @@ app.register_blueprint(users_bp)
 # Socket.IO 连接的客户端信息 {socket_id: user_id}
 connected_users = {}
 
+# 导出函数供其他模块使用
+def get_socketio_instance():
+    """获取 SocketIO 实例"""
+    return sio
+
 
 @sio.on('connect')
-def handle_connect(auth):
+def handle_connect(auth=None):
     """客户端连接"""
+    print('=' * 50)
+    print('收到 Socket.IO 连接请求')
+    print(f'Socket ID: {request.sid}')
+    print(f'请求来源: {request.remote_addr}')
+    print(f'请求头 User-Agent: {request.headers.get("User-Agent", "N/A")}')
+    print(f'函数参数 auth: {auth}')
+    print(f'request.args: {dict(request.args)}')
+    print(f'request.headers: {dict(request.headers)}')
+
     try:
-        # 从认证信息或查询参数获取 token
-        token = auth.get('token') if isinstance(auth, dict) else None
+        # Flask-SocketIO 5.x 中，auth 可能作为参数传递，也可能通过 request.event 获取
+        auth_data = auth if auth else {}
+        if hasattr(request, 'event') and request.event:
+            event_auth = request.event.get('auth', {})
+            if event_auth:
+                auth_data = event_auth
+
+        print(f'认证信息类型: {type(auth_data)}')
+        print(f'认证信息内容: {auth_data}')
+
+        # 方法1: 从查询参数获取 token（最可靠）
+        token = request.args.get('token')
+
+        # 方法2: 从 auth 对象获取 token
+        if not token and isinstance(auth_data, dict):
+            token = auth_data.get('token')
+
+        # 方法3: 从请求头获取 token
         if not token:
-            token = request.args.get('token')
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]
+
+        print(f'Token 获取方式: {"查询参数" if request.args.get("token") else "auth对象" if isinstance(auth_data, dict) and auth_data.get("token") else "请求头" if token else "未找到"}')
+        print(f'Token 存在: {bool(token)}')
+        if token:
+            print(f'Token 前30字符: {token[:30]}...')
 
         if not token:
-            print('连接失败: 未提供 token')
+            print('❌ 连接失败: 未提供 token')
             return False
 
+        print(f'验证 token: {token[:30]}...')
         user = User.verify_token(token)
+
         if not user:
-            print(f'连接失败: token 无效')
+            print(f'❌ 连接失败: token 无效或已过期')
             return False
 
         # 保存连接信息
         connected_users[request.sid] = user.id
         redis_client.set_user_online(user.id, request.sid)
 
-        print(f'用户 {user.username} (ID: {user.id}) 已连接, socket_id: {request.sid}')
+        print(f'✅ 用户 {user.username} (ID: {user.id}) 已连接, socket_id: {request.sid}')
+        print('=' * 50)
 
-        # 广播在线状态更新
-        sio.emit('user_online', {'user_id': user.id, 'username': user.username}, broadcast=True)
+        # 广播在线状态更新（Flask-SocketIO 5.x 中，不指定 to 参数即表示广播）
+        sio.emit('user_online', {'user_id': user.id, 'username': user.username})
 
         return True
 
     except Exception as e:
-        print(f'连接错误: {str(e)}')
+        print(f'❌ 连接错误: {str(e)}')
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -124,7 +175,7 @@ def handle_disconnect():
             if user:
                 print(f'用户 {user.username} (ID: {user_id}) 已断开连接')
                 # 广播离线状态更新
-                sio.emit('user_offline', {'user_id': user_id}, broadcast=True)
+                sio.emit('user_offline', {'user_id': user_id})
     except Exception as e:
         print(f'断开连接错误: {str(e)}')
 
@@ -149,7 +200,8 @@ def handle_join_room(data):
             return
 
         join_room(str(room_id))
-        print(f'用户 {user_id} 加入房间 {room_id}')
+        user = User.query.get(user_id)
+        print(f'✓ 用户 {user.username if user else user_id} 加入 Socket.IO 房间 {room_id}')
         emit('joined_room', {'room_id': room_id})
 
     except Exception as e:
@@ -217,8 +269,14 @@ def handle_send_message(data):
         db.session.add(message)
         db.session.commit()
 
+        # 刷新消息对象以加载关系（确保 sender 关系被加载）
+        db.session.refresh(message)
+
         # 先写 MySQL 后更 Redis（数据一致性原则）
         message_dict = message.to_dict()
+
+        print(f'消息创建成功: ID={message.id}, 发送者={user.username}, 房间ID={room_id}, 内容={content[:50]}')
+        print(f'消息字典: {json.dumps(message_dict, default=str, ensure_ascii=False)[:200]}')
 
         # 缓存到 Redis
         if room_id:
@@ -233,18 +291,34 @@ def handle_send_message(data):
         # 发送消息
         if room_id:
             # 群聊：发送给房间内的所有用户
+            print(f'发送群聊消息到房间 {room_id}')
             sio.emit('new_message', emit_data, room=str(room_id))
         else:
             # 单聊：发送给发送者和接收者
             sender_socket = redis_client.get_user_socket_id(user_id)
             receiver_socket = redis_client.get_user_socket_id(receiver_id)
 
-            if sender_socket:
-                sio.emit('new_message', emit_data, room=sender_socket)
-            if receiver_socket:
-                sio.emit('new_message', emit_data, room=receiver_socket)
+            receiver_user = User.query.get(receiver_id)
+            receiver_name = receiver_user.username if receiver_user else f'ID:{receiver_id}'
 
-        print(f'用户 {user.username} 发送消息到房间 {room_id or f"用户 {receiver_id}"}')
+            print(f'发送私聊消息: 发送者={user.username}(socket={sender_socket}), 接收者={receiver_name}(socket={receiver_socket})')
+
+            # 发送给发送者（确保发送者能看到自己发送的消息）
+            if sender_socket:
+                print(f'  → 发送给发送者 socket: {sender_socket}')
+                sio.emit('new_message', emit_data, room=sender_socket)
+            else:
+                print(f'  ⚠ 发送者 socket 不存在，使用当前连接')
+                emit('new_message', emit_data)
+
+            # 发送给接收者
+            if receiver_socket:
+                print(f'  → 发送给接收者 socket: {receiver_socket}')
+                sio.emit('new_message', emit_data, room=receiver_socket)
+            else:
+                print(f'  ⚠ 接收者 {receiver_name} 不在线 (socket={receiver_socket})')
+
+        print(f'✓ 用户 {user.username} 发送消息到房间 {room_id or f"用户 {receiver_id}"}')
 
     except Exception as e:
         db.session.rollback()
@@ -271,7 +345,7 @@ def health_check():
 
     try:
         # 测试 Redis 连接
-        redis_client.ping()
+        redis_client.client.ping()
         redis_status = 'connected'
     except:
         redis_status = 'disconnected'
@@ -279,7 +353,18 @@ def health_check():
     return {
         'status': 'ok',
         'database': db_status,
-        'redis': redis_status
+        'redis': redis_status,
+        'socketio_connected_users': len(connected_users)
+    }
+
+
+@app.route('/api/socketio/test', methods=['GET'])
+def socketio_test():
+    """测试 Socket.IO 连接"""
+    return {
+        'message': 'Socket.IO 测试端点',
+        'connected_users_count': len(connected_users),
+        'connected_users': list(connected_users.values())
     }
 
 
@@ -311,13 +396,40 @@ def init_db():
 
 
 if __name__ == '__main__':
+    import sys
+
+    print('=' * 50)
+    print('开始启动 Flask 应用...')
+    print('=' * 50)
+
     # 初始化数据库
-    init_db()
+    try:
+        init_db()
+        print('✅ 数据库初始化完成')
+    except Exception as e:
+        print(f'❌ 数据库初始化失败: {str(e)}')
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.exit(1)
 
     # 运行应用
     host = SETTINGS['app']['host']
     port = SETTINGS['app']['port']
     debug = SETTINGS['app']['debug']
 
-    print(f'服务器启动: http://{host}:{port}')
-    sio.run(app, host=host, port=port, debug=debug)
+    print('=' * 50)
+    print(f'🚀 服务器启动: http://{host}:{port}')
+    print(f'调试模式: {debug}')
+    print(f'Socket.IO 异步模式: eventlet')
+    print('=' * 50)
+    sys.stdout.flush()
+
+    try:
+        sio.run(app, host=host, port=port, debug=debug)
+    except Exception as e:
+        print(f'❌ 服务器启动失败: {str(e)}')
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.exit(1)
