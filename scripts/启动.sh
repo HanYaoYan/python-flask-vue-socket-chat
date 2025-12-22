@@ -5,6 +5,9 @@ echo "  聊天室应用 - Docker 一键启动"
 echo "===================================="
 echo
 
+# 切换到项目根目录
+cd "$(dirname "$0")/.." || exit 1
+
 # 检查 Docker 是否运行
 if ! docker info > /dev/null 2>&1; then
     echo "[错误] Docker 未运行，请先启动 Docker"

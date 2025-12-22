@@ -5,6 +5,14 @@ echo   聊天室应用 - Docker 一键启动
 echo ====================================
 echo.
 
+REM 切换到项目根目录
+cd /d %~dp0..
+if errorlevel 1 (
+    echo [错误] 无法切换到项目根目录
+    pause
+    exit /b 1
+)
+
 REM 检查 Docker 是否运行
 docker info >nul 2>&1
 if errorlevel 1 (

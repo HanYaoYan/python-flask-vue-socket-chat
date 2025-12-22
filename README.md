@@ -55,14 +55,13 @@
 │   │   └── views/        # 页面视图
 │   ├── electron/         # Electron 主进程
 │   └── package.json
-├── docs/                  # 项目文档
-│   ├── README.md         # 文档索引
-│   └── PROJECT_STRUCTURE.md  # 项目结构说明
-├── docker-compose.yml     # Docker Compose 配置（仅后端）
-├── docker-compose.full.yml # Docker Compose 配置（完整服务）
-├── 启动.bat / 启动.sh    # 一键启动脚本
-├── 停止.bat / 停止.sh    # 停止服务脚本
-├── Dockerfile            # Docker 镜像配置
+├── scripts/              # 启动脚本
+│   ├── 启动.bat / 启动.sh    # Docker 一键启动脚本（Windows/Linux）
+│   └── 停止.bat / 停止.sh    # 停止服务脚本
+├── docker-compose.yml     # Docker Compose 配置（仅后端：MySQL、Redis、Flask）
+├── docker-compose.full.yml # Docker Compose 配置（完整服务：包含前端）
+├── Dockerfile            # Docker 镜像配置（后端）
+├── frontend/Dockerfile.dev # Docker 镜像配置（前端开发环境）
 ├── requirements.txt      # Python 依赖
 └── .env.example          # 环境变量示例
 ```
@@ -78,23 +77,130 @@
 
 ### 🚀 Docker 一键启动（推荐，无需安装 Node.js 和 Python）
 
-**Windows:**
-```cmd
-启动.bat
-```
+本项目提供完整的 Docker 部署方案，**无需安装 Node.js 或 Python**，只需 Docker 即可运行整个应用。
 
-**Linux/macOS:**
-```bash
-chmod +x 启动.sh
-./启动.sh
-```
+#### Windows 用户
 
-**手动启动:**
+1. **确保 Docker Desktop 已启动**
+
+2. **运行启动脚本：**
+   ```cmd
+   scripts\启动.bat
+   ```
+
+3. **等待服务启动完成**
+   - 首次启动需要下载镜像，约 3-8 分钟
+   - 前端构建 npm 依赖可能需要额外时间
+   - 请耐心等待，直到所有服务状态显示为 "Up"
+
+4. **访问应用**
+   - 前端：http://localhost:5173
+   - 后端 API：http://localhost:9000/api/health
+
+#### Linux/macOS 用户
+
+1. **确保 Docker 和 Docker Compose 已安装并运行**
+
+2. **给启动脚本添加执行权限：**
+   ```bash
+   chmod +x scripts/启动.sh scripts/停止.sh
+   ```
+
+3. **运行启动脚本：**
+   ```bash
+   ./scripts/启动.sh
+   ```
+
+4. **等待服务启动完成并访问应用**
+
+#### 手动启动（所有平台）
+
 ```bash
 docker-compose -f docker-compose.full.yml up -d --build
 ```
 
-> **详细 Docker 启动指南请查看 [README_DOCKER.md](README_DOCKER.md)**
+#### Docker 服务说明
+
+启动后，以下服务会自动运行：
+
+| 服务 | 容器名 | 端口 | 说明 |
+|------|--------|------|------|
+| MySQL | chat_mysql | 3306 | 数据库 |
+| Redis | chat_redis | 6379 | 缓存 |
+| Flask 后端 | chat_app | 9000 | API 服务 |
+| Vue 前端 | chat_frontend | 5173 | 前端开发服务器 |
+
+#### Docker 常用命令
+
+**查看服务状态：**
+```bash
+docker-compose -f docker-compose.full.yml ps
+```
+
+**查看日志：**
+```bash
+# 查看所有服务日志
+docker-compose -f docker-compose.full.yml logs -f
+
+# 查看特定服务日志
+docker-compose -f docker-compose.full.yml logs -f app
+docker-compose -f docker-compose.full.yml logs -f frontend
+```
+
+**停止服务：**
+```bash
+# Windows
+scripts\停止.bat
+
+# Linux/macOS
+./scripts/停止.sh
+
+# 或手动停止
+docker-compose -f docker-compose.full.yml down
+```
+
+**重启服务：**
+```bash
+docker-compose -f docker-compose.full.yml restart
+```
+
+**停止并删除所有数据（谨慎使用）：**
+```bash
+docker-compose -f docker-compose.full.yml down -v
+```
+
+#### Docker 故障排查
+
+**端口被占用：**
+如果端口 5173、9000、3306、6379 被占用，可以修改 `docker-compose.full.yml` 中的端口映射。
+
+**服务启动失败：**
+1. 查看日志：`docker-compose -f docker-compose.full.yml logs`
+2. 检查 Docker 资源：确保 Docker 有足够的内存（建议 4GB+）和磁盘空间
+3. 重新构建：`docker-compose -f docker-compose.full.yml up -d --build --force-recreate`
+
+**前端 Docker 镜像拉取失败（备用方案）：**
+如果因为网络问题无法拉取前端 Docker 镜像，可以使用本地 Node.js 启动前端：
+
+1. **只启动后端服务：**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **本地启动前端：**
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+#### Docker 优势
+
+- ✅ **零配置**：无需安装 Node.js、Python、MySQL、Redis
+- ✅ **环境一致**：所有人使用相同的环境，避免版本问题
+- ✅ **易于分发**：打包项目文件夹即可
+- ✅ **隔离运行**：不污染本地环境
+- ✅ **一键启动**：运行脚本即可启动所有服务
 
 ### 📝 本地开发启动
 
@@ -212,9 +318,12 @@ npm run electron:build:linux
 docker-compose up -d
 ```
 
-这将启动 MySQL、Redis 和应用服务。
+这将启动 MySQL、Redis 和应用服务（不包含前端）。
 
-更多 Docker 相关文档请查看 [README_DOCKER.md](README_DOCKER.md)
+如需完整部署（包含前端），使用：
+```bash
+docker-compose -f docker-compose.full.yml up -d --build
+```
 
 ## API 文档
 
