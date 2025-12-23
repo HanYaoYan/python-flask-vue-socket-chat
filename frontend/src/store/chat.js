@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getRooms, createRoom, joinRoom, joinRoomByCode as apiJoinRoomByCode, getMessages } from '@/api/rooms'
-import { getOnlineUsers } from '@/api/users'
+import { getOnlineUsers, getPrivateMessages } from '@/api/users'
 import { initSocket, disconnectSocket } from '@/utils/socket'
 
 export const useChatStore = defineStore('chat', () => {
@@ -10,6 +10,9 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref([])
   const onlineUsers = ref([])
   const socket = ref(null)
+  const privateMessagesMap = ref({}) // { userId: [messages] }
+  const unreadRooms = ref({})        // { roomId: count }
+  const unreadUsers = ref({})        // { userId: count }
 
   async function loadRooms() {
     try {
@@ -31,6 +34,10 @@ export const useChatStore = defineStore('chat', () => {
 
   async function selectRoom(room) {
     currentRoom.value = room
+    // 切换房间时清除未读计数
+    if (room?.id) {
+      unreadRooms.value = { ...unreadRooms.value, [room.id]: 0 }
+    }
 
     // 加入 Socket.IO 房间
     if (socket.value) {
@@ -51,6 +58,19 @@ export const useChatStore = defineStore('chat', () => {
       }
     } catch (error) {
       console.error('加载消息失败:', error)
+    }
+  }
+
+  async function loadPrivateMessages(targetId, perPage = 50) {
+    try {
+      const { messages: list } = await getPrivateMessages(targetId, perPage)
+      privateMessagesMap.value = {
+        ...privateMessagesMap.value,
+        [targetId]: list || []
+      }
+    } catch (error) {
+      console.error('加载私聊消息失败:', error)
+      throw error
     }
   }
 
@@ -114,6 +134,54 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function addPrivateMessage(targetId, message) {
+    if (!message || !message.id || !targetId) {
+      console.warn('私聊消息格式错误:', message, 'targetId:', targetId)
+      return
+    }
+    const list = privateMessagesMap.value[targetId] || []
+    const exists = list.some(m => m.id === message.id)
+    if (!exists) {
+      privateMessagesMap.value = {
+        ...privateMessagesMap.value,
+        [targetId]: [...list, message]
+      }
+      console.log('✅ 添加私聊消息成功，ID:', message.id, '目标:', targetId)
+    } else {
+      console.log('⚠️ 私聊消息已存在，跳过，ID:', message.id)
+    }
+  }
+
+  function getPrivateMessagesByUser(targetId) {
+    return privateMessagesMap.value[targetId] || []
+  }
+
+  function incrementRoomUnread(roomId) {
+    if (!roomId) return
+    const current = unreadRooms.value[roomId] || 0
+    unreadRooms.value = { ...unreadRooms.value, [roomId]: current + 1 }
+  }
+
+  function clearRoomUnread(roomId) {
+    if (!roomId) return
+    if (unreadRooms.value[roomId]) {
+      unreadRooms.value = { ...unreadRooms.value, [roomId]: 0 }
+    }
+  }
+
+  function incrementUserUnread(userId) {
+    if (!userId) return
+    const current = unreadUsers.value[userId] || 0
+    unreadUsers.value = { ...unreadUsers.value, [userId]: current + 1 }
+  }
+
+  function clearUserUnread(userId) {
+    if (!userId) return
+    if (unreadUsers.value[userId]) {
+      unreadUsers.value = { ...unreadUsers.value, [userId]: 0 }
+    }
+  }
+
   function initSocketConnection(token) {
     socket.value = initSocket(token, {
       onConnect: () => {
@@ -148,14 +216,24 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     onlineUsers,
     socket,
+    privateMessagesMap,
+    unreadRooms,
+    unreadUsers,
     loadRooms,
     loadOnlineUsers,
     selectRoom,
     loadMessages,
+    loadPrivateMessages,
     createNewRoom,
     joinRoomById,
     joinRoomByCode,
     addMessage,
+    addPrivateMessage,
+    getPrivateMessagesByUser,
+    incrementRoomUnread,
+    clearRoomUnread,
+    incrementUserUnread,
+    clearUserUnread,
     initSocketConnection,
     disconnectSocketConnection
   }

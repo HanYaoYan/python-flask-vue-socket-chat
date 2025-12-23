@@ -1,54 +1,53 @@
 #!/bin/bash
 
 echo "===================================="
-echo "  聊天室应用 - Docker 一键启动"
+echo "  Chat Application - Docker Startup"
 echo "===================================="
 echo
 
-# 切换到项目根目录
+# Change to project root directory
 cd "$(dirname "$0")/.." || exit 1
 
-# 检查 Docker 是否运行
+# Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
-    echo "[错误] Docker 未运行，请先启动 Docker"
+    echo "[ERROR] Docker is not running. Please start Docker first."
     exit 1
 fi
 
-echo "[1/3] 检查 Docker Compose..."
+echo "[1/3] Checking Docker Compose..."
 if ! command -v docker-compose &> /dev/null; then
-    echo "[错误] Docker Compose 未安装"
+    echo "[ERROR] Docker Compose is not installed"
     exit 1
 fi
 
-echo "[2/3] 启动所有服务（MySQL、Redis、后端、前端）..."
+echo "[2/3] Starting all services (MySQL, Redis, Backend, Frontend)..."
 echo
-echo "提示: 首次启动需要下载镜像，可能需要几分钟时间，请耐心等待..."
+echo "Note: First startup may take several minutes to download images..."
 echo
 docker-compose -f docker-compose.full.yml up -d --build
 
 if [ $? -ne 0 ]; then
     echo
-    echo "[错误] 服务启动失败"
+    echo "[ERROR] Service startup failed"
     exit 1
 fi
 
 echo
-echo "[3/3] 等待服务启动（前端构建可能需要更长时间）..."
+echo "[3/3] Waiting for services to start (frontend build may take longer)..."
 sleep 20
 
 echo
-echo "检查服务状态..."
+echo "Checking service status..."
 docker-compose -f docker-compose.full.yml ps
 
 echo
 echo "===================================="
-echo "  服务启动完成！"
+echo "  Services started successfully!"
 echo "===================================="
 echo
-echo "前端访问地址: http://localhost:5173"
-echo "后端 API 地址: http://localhost:9000"
+echo "Frontend: http://localhost:5173"
+echo "Backend API: http://localhost:9000"
 echo
-echo "查看日志: docker-compose -f docker-compose.full.yml logs -f"
-echo "停止服务: docker-compose -f docker-compose.full.yml down"
+echo "View logs: docker-compose -f docker-compose.full.yml logs -f"
+echo "Stop services: docker-compose -f docker-compose.full.yml down"
 echo
-

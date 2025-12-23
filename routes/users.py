@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from models import db
 from models.user import User
 from models.friend import Friend
+from models.message import Message
 from utils.redis_client import redis_client
 
 users_bp = Blueprint('users', __name__, url_prefix='/api/users')
@@ -261,4 +262,63 @@ def delete_friend(friend_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': f'操作失败: {str(e)}'}), 500
+
+
+@users_bp.route('/private/<int:target_id>/messages', methods=['GET'])
+def get_private_messages(target_id):
+    """获取与指定用户的私聊消息（优先 Redis，回落 MySQL）"""
+    try:
+        user = get_current_user(request)
+        if not user:
+            return jsonify({'error': '未认证'}), 401
+
+        # 校验目标用户存在
+        target_user = User.query.get(target_id)
+        if not target_user:
+            return jsonify({'error': '目标用户不存在'}), 404
+
+        per_page = int(request.args.get('per_page', 50))
+        per_page = max(1, min(per_page, 200))
+
+        import json
+
+        # 1) 尝试 Redis 缓存（最新在前）
+        cached = redis_client.get_private_messages(user.id, target_id, count=per_page)
+        messages = []
+        if cached:
+            for raw in cached:
+                try:
+                    msg = json.loads(raw)
+                    messages.append(msg)
+                except Exception:
+                    continue
+            # Redis 是新->旧，这里反转为旧->新
+            messages.reverse()
+
+        # 2) 缓存为空则回落 MySQL
+        if not messages:
+            query = Message.query.filter(
+                ((Message.sender_id == user.id) & (Message.receiver_id == target_id)) |
+                ((Message.sender_id == target_id) & (Message.receiver_id == user.id))
+            ).order_by(Message.created_at.desc()).limit(per_page)
+
+            db_messages = query.all()
+            db_messages.reverse()  # 旧->新
+            messages = [m.to_dict() for m in db_messages]
+
+            # 将 DB 结果回填 Redis，加速下次访问
+            for msg in messages:
+                try:
+                    redis_client.cache_private_message(user.id, target_id, json.dumps(msg, default=str))
+                except Exception:
+                    pass
+
+        return jsonify({
+            'messages': messages,
+            'target': target_user.to_dict(),
+            'count': len(messages)
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f'获取私聊消息失败: {str(e)}'}), 500
 

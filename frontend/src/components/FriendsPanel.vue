@@ -37,6 +37,9 @@
           <div class="friend-info" @click="handleStartChat(friend.friend)">
             <span class="status-dot online"></span>
             <span class="friend-name clickable">{{ friend.friend.username }}</span>
+            <span v-if="chatStore.unreadUsers[friend.friend.id] > 0" class="badge">
+              {{ chatStore.unreadUsers[friend.friend.id] }}
+            </span>
           </div>
           <button @click.stop="handleDeleteFriend(friend.friend.id)" class="btn-delete">删除</button>
         </div>
@@ -102,8 +105,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getFriends, getFriendRequests, addFriend, acceptFriendRequest, deleteFriend, searchUsers } from '@/api/users'
+import { useChatStore } from '@/store/chat'
 
 const emit = defineEmits(['start-chat'])
+const chatStore = useChatStore()
 
 const activeSubTab = ref('friends')
 const friends = ref([])
@@ -274,13 +279,20 @@ defineExpose({
 }
 
 .badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
   background: #f44336;
   color: white;
-  border-radius: 10px;
-  padding: 2px 6px;
-  font-size: 10px;
-  margin-left: 5px;
+  border-radius: 9px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: auto;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  line-height: 1;
 }
 
 .panel-content {
@@ -315,6 +327,8 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .friend-name, .requester-name {

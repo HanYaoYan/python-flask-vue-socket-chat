@@ -1,16 +1,14 @@
 @echo off
-chcp 65001 >nul
 echo ====================================
-echo   聊天室应用 - 停止所有服务
+echo   Chat Application - Stop Services
 echo ====================================
 echo.
 
-REM 切换到项目根目录
+REM Change to project root directory
 cd /d %~dp0..
 
 docker-compose -f docker-compose.full.yml down
 
 echo.
-echo 服务已停止
+echo Services stopped
 pause
-

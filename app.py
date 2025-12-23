@@ -62,6 +62,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 初始化扩展
+# 初始化数据库，将 Flask 应用（app）的配置与 SQLAlchemy（db） 进行绑定
 db.init_app(app)
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 # Socket.IO 配置：允许所有来源，启用日志
@@ -281,6 +282,9 @@ def handle_send_message(data):
         # 缓存到 Redis
         if room_id:
             redis_client.cache_message(room_id, json.dumps(message_dict, default=str))
+        else:
+            # 私聊消息缓存，双方共享同一 key
+            redis_client.cache_private_message(user_id, receiver_id, json.dumps(message_dict, default=str))
 
         # 准备发送的消息数据
         emit_data = {

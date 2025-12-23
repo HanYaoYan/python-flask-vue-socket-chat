@@ -19,6 +19,7 @@
           @click="activeTab = 'rooms'"
         >
           房间
+          <span v-if="totalRoomUnread > 0" class="tab-badge">{{ totalRoomUnread > 99 ? '99+' : totalRoomUnread }}</span>
         </button>
         <button
           :class="['tab', { active: activeTab === 'users' }]"
@@ -31,6 +32,7 @@
           @click="activeTab = 'friends'"
         >
           好友
+          <span v-if="totalFriendUnread > 0" class="tab-badge">{{ totalFriendUnread > 99 ? '99+' : totalFriendUnread }}</span>
         </button>
       </div>
 
@@ -53,6 +55,9 @@
             <div class="room-name">{{ room.name }}</div>
             <div class="room-info">
               <span>{{ room.member_count }} 人</span>
+              <span v-if="chatStore.unreadRooms[room.id] > 0" class="badge">
+                {{ chatStore.unreadRooms[room.id] }}
+              </span>
             </div>
           </div>
           <div v-if="chatStore.rooms.length === 0" class="empty-state">
@@ -75,6 +80,9 @@
           >
             <span class="status-dot online"></span>
             <span class="user-name">{{ user.username }}</span>
+            <span v-if="chatStore.unreadUsers[user.id] > 0" class="badge">
+              {{ chatStore.unreadUsers[user.id] }}
+            </span>
           </div>
         </div>
       </div>
@@ -100,7 +108,10 @@
         <div class="chat-header">
           <div class="room-info">
             <h2>{{ chatStore.currentRoom.name }}</h2>
-            <span class="member-count">{{ chatStore.currentRoom.member_count }} 人在线</span>
+            <div class="room-meta">
+              <span class="room-id">房间ID: {{ chatStore.currentRoom.room_code }}</span>
+              <span class="member-count">{{ chatStore.currentRoom.member_count }} 人在线</span>
+            </div>
           </div>
         </div>
 
@@ -188,7 +199,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useChatStore } from '@/store/chat'
@@ -212,6 +223,16 @@ const currentPrivateChat = ref(null)
 const privateMessages = ref([])
 const friendsPanelRef = ref(null)
 const intervalRef = ref(null)
+
+// 计算所有房间的未读总数
+const totalRoomUnread = computed(() => {
+  return Object.values(chatStore.unreadRooms).reduce((sum, count) => sum + (count || 0), 0)
+})
+
+// 计算所有好友的未读总数
+const totalFriendUnread = computed(() => {
+  return Object.values(chatStore.unreadUsers).reduce((sum, count) => sum + (count || 0), 0)
+})
 
 // 将 onBeforeUnmount 移到 onMounted 之前，确保在 setup 的同步部分注册
 onBeforeUnmount(() => {
@@ -242,26 +263,29 @@ onMounted(async () => {
       console.log('收到新消息:', data)
       const message = data.message
 
-      // 如果是私聊消息
+        // 如果是私聊消息
       if (!message.room_id && message.receiver_id) {
         console.log('收到私聊消息:', message)
-        // 检查是否是当前私聊对象
-        if (currentPrivateChat.value &&
-            (message.sender_id === currentPrivateChat.value.id ||
-             message.receiver_id === currentPrivateChat.value.id)) {
-          // 检查消息是否已存在（避免重复添加）
-          const exists = privateMessages.value.some(m => m.id === message.id)
-          if (!exists) {
-            console.log('添加私聊消息到列表:', message)
-            privateMessages.value.push(message)
+          // 计算会话对端 ID（对方）
+          const otherUserId = message.sender_id === authStore.user?.id
+            ? message.receiver_id
+            : message.sender_id
+
+          // 写入全局私聊缓存
+          chatStore.addPrivateMessage(otherUserId, message)
+
+          // 如果正在当前会话，刷新列表并滚动；否则记未读
+          if (currentPrivateChat.value &&
+              (message.sender_id === currentPrivateChat.value.id ||
+               message.receiver_id === currentPrivateChat.value.id)) {
+            privateMessages.value = chatStore.getPrivateMessagesByUser(currentPrivateChat.value.id)
+            chatStore.clearUserUnread(currentPrivateChat.value.id)
             scrollToBottomPrivate()
           } else {
-            console.log('私聊消息已存在，跳过:', message.id)
+            chatStore.incrementUserUnread(otherUserId)
+            console.log('收到其他用户的私聊消息，当前私聊对象:', currentPrivateChat.value?.id,
+                        '消息发送者:', message.sender_id, '消息接收者:', message.receiver_id)
           }
-        } else {
-          console.log('收到其他用户的私聊消息，当前私聊对象:', currentPrivateChat.value?.id,
-                     '消息发送者:', message.sender_id, '消息接收者:', message.receiver_id)
-        }
       } else if (message.room_id) {
         // 群聊消息：如果当前正在查看该房间，则添加到消息列表
         if (chatStore.currentRoom && message.room_id === chatStore.currentRoom.id) {
@@ -278,7 +302,9 @@ onMounted(async () => {
             console.log('⚠️ 群聊消息已存在，跳过处理，ID:', message.id)
           }
         } else {
-          console.log('收到其他房间的消息，当前房间:', chatStore.currentRoom?.id, '消息房间:', message.room_id)
+            // 未在当前房间，增加未读计数
+            chatStore.incrementRoomUnread(message.room_id)
+            console.log('收到其他房间的消息，当前房间:', chatStore.currentRoom?.id, '消息房间:', message.room_id)
         }
       }
     })
@@ -332,8 +358,15 @@ async function handleRoomJoined(room) {
 function startPrivateChat(user) {
   currentPrivateChat.value = user
   chatStore.currentRoom = null
-  privateMessages.value = []
-  // TODO: 加载历史私聊消息（如果需要）
+  chatStore.clearUserUnread(user.id)
+  // 加载历史私聊消息
+  chatStore.loadPrivateMessages(user.id).then(() => {
+    privateMessages.value = chatStore.getPrivateMessagesByUser(user.id)
+    scrollToBottomPrivate()
+  }).catch((err) => {
+    console.error('加载私聊消息失败:', err)
+    privateMessages.value = chatStore.getPrivateMessagesByUser(user.id)
+  })
 }
 
 function handleFriendChat(friend) {
@@ -553,6 +586,29 @@ function handleLogout() {
   font-weight: bold;
 }
 
+.tab {
+  position: relative;
+}
+
+.tab-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  background: #f44336;
+  color: white;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
@@ -607,6 +663,16 @@ function handleLogout() {
   background: #f0f0f0;
 }
 
+.badge {
+  min-width: 18px;
+  padding: 2px 6px;
+  background: #f44336;
+  color: white;
+  border-radius: 12px;
+  font-size: 12px;
+  text-align: center;
+}
+
 .room-item.active {
   background: #e3e8ff;
 }
@@ -619,11 +685,15 @@ function handleLogout() {
 .room-info {
   font-size: 12px;
   color: #666;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .user-item {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .user-name {
@@ -677,7 +747,23 @@ function handleLogout() {
 
 .room-info h2 {
   font-size: 20px;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
+}
+
+.room-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.room-id {
+  font-size: 13px;
+  color: #667eea;
+  font-weight: 500;
+  background: #e3e8ff;
+  padding: 4px 10px;
+  border-radius: 4px;
 }
 
 .member-count {

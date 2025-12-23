@@ -90,7 +90,7 @@ services:
       - /app/node_modules  # 防止覆盖容器内的 node_modules
     environment:
       - NODE_ENV=development
-      # 在这里把ip改成服务器的ip地址
+      # 在这里把ip改成服务器的ip地址，其他客户端通过ip访问该服务器
       - VITE_API_BASE_URL=http://localhost:9000/api
       - VITE_SOCKET_URL=http://localhost:9000
     depends_on:
