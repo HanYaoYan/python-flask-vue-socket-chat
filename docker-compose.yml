@@ -12,7 +12,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-password}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-chat_db}
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password
@@ -26,7 +26,7 @@ services:
     image: redis:6.0-alpine
     container_name: chat_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -40,7 +40,7 @@ services:
     build: .
     container_name: chat_app
     ports:
-      - "9000:9000"
+      - "${APP_PORT:-9000}:9000"
     dns:
       - 114.114.114.114
       - 8.8.8.8
@@ -49,13 +49,13 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 9000
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_USER: root
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:-root}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-chat_db}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
       SECRET_KEY: ${SECRET_KEY:-secret-key-change-in-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-jwt-secret-key-change-in-production}
     depends_on:
@@ -65,7 +65,7 @@ services:
         condition: service_healthy
     volumes:
       - ./:/app
-    command: sh -c "python3 wait-for-mysql.py mysql 3306 && python3 app.py"
+    command: sh -c "python3 wait-for-mysql.py ${MYSQL_HOST:-mysql} ${MYSQL_PORT:-3306} && python3 app.py"
 
 volumes:
   mysql_data:
